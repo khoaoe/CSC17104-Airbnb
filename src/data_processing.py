@@ -6,6 +6,8 @@ from typing import Dict, Iterable, List
 
 import numpy as np
 
+DATASET_NAME = "dgomonov/new-york-city-airbnb-open-data"
+FILENAME = "AB_NYC_2019.csv"
 
 KEY_COLUMNS = [
     "price",
@@ -39,17 +41,17 @@ def kaggle_download_if_needed(dataset: str, filename: str, out_dir: str) -> Path
         return target
 
     cmd = [
-        "kaggle",
+        "../.venv/bin/kaggle",
         "datasets",
         "download",
         "-d",
         dataset,
-        "-f",
-        filename,
         "-p",
         str(out_path),
         "--quiet",
+        "--unzip",
     ]
+    
     try:
         # Kaggle CLI cần ~/.kaggle/kaggle.json hoặc biến môi trường KAGGLE_USERNAME/KAGGLE_KEY
         result = subprocess.run(
@@ -59,7 +61,7 @@ def kaggle_download_if_needed(dataset: str, filename: str, out_dir: str) -> Path
             text=True,
         )
     except FileNotFoundError as exc:
-        raise RuntimeError("Khong tim thay Kaggle CLI. Cai dat bang 'pip install kaggle'") from exc
+        raise RuntimeError("Không tìm thấy Kaggle CLI") from exc
 
     if result.returncode != 0:
         msg = (result.stderr or result.stdout or "").strip()
@@ -109,7 +111,7 @@ def load_airbnb_numpy(csv_path: Path) -> Dict[str, Dict[str, np.ndarray]]:
         try:
             header = next(reader)
         except StopIteration as exc:
-            raise RuntimeError("File CSV trong.") from exc
+            raise RuntimeError("File CSV trong") from exc
         rows = [row for row in reader]
 
     columns: Dict[str, List[str]] = {col: [] for col in header}
@@ -195,12 +197,12 @@ def basic_checks(data: Dict[str, Dict[str, np.ndarray]]) -> Dict[str, object]:
 
 def load_and_check(root: str = "data") -> Dict[str, object]:
     dirs = ensure_data_dirs(root=root)
-    csv_path = dirs["raw"] / "AB_NYC_2019.csv"
+    csv_path = dirs["raw"] / FILENAME
     
     if not csv_path.exists():
         kaggle_download_if_needed(
-            dataset="dgomonov/new-york-city-airbnb-open-data",
-            filename="AB_NYC_2019.csv",
+            dataset=DATASET_NAME,
+            filename=FILENAME,
             out_dir=str(dirs["raw"]),
         )
 
