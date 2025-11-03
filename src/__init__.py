@@ -1,9 +1,22 @@
 from .data_processing import (
+    basic_checks,
+    build_features,
+    clip_outliers_percentile,
     ensure_data_dirs,
     kaggle_download_if_needed,
     load_airbnb_numpy,
-    basic_checks,
     load_and_check,
+    nonempty_mask,
+    one_hot,
+    preprocess_and_save,
+    safe_log1p,
+    PreprocessBundle,
+    PreprocessConfig,
+)
+from .visualization import (
+    plot_min_nights_hist,
+    plot_price_hist_log,
+    plot_scatter_map,
 )
 
 __all__ = [
@@ -12,4 +25,15 @@ __all__ = [
     "load_airbnb_numpy",
     "basic_checks",
     "load_and_check",
+    "clip_outliers_percentile",
+    "one_hot",
+    "nonempty_mask",
+    "safe_log1p",
+    "PreprocessConfig",
+    "PreprocessBundle",
+    "build_features",
+    "preprocess_and_save",
+    "plot_price_hist_log",
+    "plot_min_nights_hist",
+    "plot_scatter_map",
 ]

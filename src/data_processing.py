@@ -1,8 +1,9 @@
 ﻿import csv
 import subprocess
 import zipfile
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List
+from typing import Dict, Iterable, List, Tuple
 
 import numpy as np
 
@@ -224,6 +225,150 @@ def load_and_check(root: str = "data") -> Dict[str, object]:
     print(f"last_review NA: {report['na_last_review']}")
 
     return report
+
+
+def clip_outliers_percentile(
+    x: np.ndarray, p_low: float = 0.0, p_high: float = 99.5
+) -> Tuple[np.ndarray, float, float]:
+    """Clip theo phan tram vi de cat duoi cuc tri."""
+    lo, hi = np.percentile(x, [p_low, p_high])
+    return np.clip(x, lo, hi), float(lo), float(hi)
+
+
+def one_hot(values: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """One-hot cho mang object/string, tra ve (matrix, uniques)."""
+    uniq, inv = np.unique(values, return_inverse=True)
+    oh = np.eye(uniq.size, dtype=np.float64)[inv]
+    return oh, uniq
+
+
+def nonempty_mask(arr_obj: np.ndarray) -> np.ndarray:
+    """True neu text khong rong hoac la 'NA'."""
+    return np.array([str(v).strip() not in {"", "NA"} for v in arr_obj], dtype=bool)
+
+
+def safe_log1p(x: np.ndarray) -> np.ndarray:
+    """log1p an toan cho gia tri khong am."""
+    x = np.maximum(x, 0.0)
+    return np.log1p(x)
+
+
+@dataclass
+class PreprocessConfig:
+    p_high_min_nights: float = 99.0
+    p_high_host_listings: float = 99.0
+    host_big_threshold: float = 3.0
+
+
+@dataclass
+class PreprocessBundle:
+    X: np.ndarray
+    y: np.ndarray
+    y_log1p: np.ndarray
+    feature_names: np.ndarray
+    room_type_uniques: np.ndarray
+    neigh_group_uniques: np.ndarray
+
+
+def build_features(
+    num: Dict[str, np.ndarray],
+    txt: Dict[str, np.ndarray],
+    cfg: PreprocessConfig = PreprocessConfig(),
+) -> PreprocessBundle:
+    """Build tap dac trung NumPy-only tu dict cot so/text."""
+    price = num["price"].astype(np.float64)
+    minimum_nights = num["minimum_nights"].astype(np.float64)
+    number_of_reviews = num["number_of_reviews"].astype(np.float64)
+    host_listings = num["calculated_host_listings_count"].astype(np.float64)
+    availability_365 = np.clip(num["availability_365"].astype(np.float64), 0, 365)
+    reviews_per_month = num["reviews_per_month"].astype(np.float64)
+
+    room_type = txt["room_type"]
+    neigh_group = txt["neighbourhood_group"]
+    last_review = txt["last_review"]
+
+    rpm_filled = reviews_per_month.copy()
+    rpm_filled[np.isnan(rpm_filled)] = 0.0
+
+    min_nights_clip, _, _ = clip_outliers_percentile(
+        minimum_nights, 0.0, cfg.p_high_min_nights
+    )
+    host_listings_clip, _, _ = clip_outliers_percentile(
+        host_listings, 0.0, cfg.p_high_host_listings
+    )
+
+    has_last_review = nonempty_mask(last_review).astype(np.float64)
+    is_entire_home = (room_type == "Entire home/apt").astype(np.float64)
+    host_is_big = (host_listings_clip >= cfg.host_big_threshold).astype(np.float64)
+
+    oh_room, rt_uniques = one_hot(room_type)
+    oh_neigh, ng_uniques = one_hot(neigh_group)
+
+    X_blocks = [
+        safe_log1p(number_of_reviews).reshape(-1, 1),
+        safe_log1p(min_nights_clip).reshape(-1, 1),
+        safe_log1p(host_listings_clip).reshape(-1, 1),
+        (availability_365 / 365.0).reshape(-1, 1),
+        safe_log1p(rpm_filled).reshape(-1, 1),
+        is_entire_home.reshape(-1, 1),
+        host_is_big.reshape(-1, 1),
+        has_last_review.reshape(-1, 1),
+        oh_room,
+        oh_neigh,
+    ]
+    X = np.concatenate(X_blocks, axis=1)
+    y = price.copy()
+    y_log1p = safe_log1p(y)
+
+    feature_names = [
+        "log1p_num_reviews",
+        "log1p_minimum_nights",
+        "log1p_host_listings",
+        "days_available_ratio",
+        "log1p_reviews_per_month",
+        "is_entire_home",
+        "host_is_big_ge3",
+        "has_last_review",
+    ] + [f"rt::{s}" for s in rt_uniques.tolist()] + [
+        f"ng::{s}" for s in ng_uniques.tolist()
+    ]
+
+    return PreprocessBundle(
+        X=X,
+        y=y,
+        y_log1p=y_log1p,
+        feature_names=np.array(feature_names, dtype=object),
+        room_type_uniques=rt_uniques.astype(object),
+        neigh_group_uniques=ng_uniques.astype(object),
+    )
+
+
+def preprocess_and_save(
+    root: str = "data",
+    out_name: str = "airbnb_2019_preprocessed.npz",
+    cfg: PreprocessConfig = PreprocessConfig(),
+) -> Path:
+    """End-to-end: load CSV tho, build features, luu npz."""
+    dirs = ensure_data_dirs(root=root)
+    csv_path = dirs["raw"] / FILENAME
+    if not csv_path.exists():
+        kaggle_download_if_needed(
+            dataset=DATASET_NAME, filename=FILENAME, out_dir=str(dirs["raw"])
+        )
+    data = load_airbnb_numpy(csv_path)
+    bundle = build_features(data["num"], data["text"], cfg)
+
+    out_path = dirs["processed"] / out_name
+    np.savez_compressed(
+        out_path,
+        X=bundle.X,
+        y=bundle.y,
+        y_log1p=bundle.y_log1p,
+        feature_names=bundle.feature_names,
+        room_type_uniques=bundle.room_type_uniques,
+        neigh_group_uniques=bundle.neigh_group_uniques,
+    )
+    return out_path
 
 
 if __name__ == "__main__":
