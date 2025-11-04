@@ -6,7 +6,7 @@
   ```bash
   bash scripts/setup_secrets.sh
   ```
-
+  
 * Ưu tiên `~/.kaggle/kaggle.json`; nếu chưa có, script sẽ tạo từ `.env`.
 * Kaggle API cần `~/.kaggle/kaggle.json` **hoặc** biến môi trường `KAGGLE_USERNAME`/`KAGGLE_KEY`.
 

@@ -2,8 +2,7 @@ import numpy as np
 
 
 def _plt():
-    """Late import matplotlib to avoid hard dependency during pure preprocessing."""
-    from matplotlib import pyplot as plt  # type: ignore import-error
+    from matplotlib import pyplot as plt  
 
     return plt
 
