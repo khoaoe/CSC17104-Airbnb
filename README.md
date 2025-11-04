@@ -1,3 +1,10 @@
+# [CSC17104 - Homework 02] NYC Airbnb (NumPy-only)
+
+## 1. Giới thiệu
+Mục tiêu: khám phá dữ liệu Airbnb NYC và xây dựng pipeline tiền xử lý thuần NumPy. 
+Dữ liệu gốc từ [Kaggle](https://www.kaggle.com/datasets/dgomonov/new-york-city-airbnb-open-data).
+
+
 ## Secrets (.env) & Kaggle API 
 
 * Tạo secrets bằng `.env`: copy `.env.example` → đổi tên thành `.env` và điền `KAGGLE_USERNAME`, `KAGGLE_KEY`.
@@ -6,7 +13,7 @@
   ```bash
   bash scripts/setup_secrets.sh
   ```
-  
+
 * Ưu tiên `~/.kaggle/kaggle.json`; nếu chưa có, script sẽ tạo từ `.env`.
 * Kaggle API cần `~/.kaggle/kaggle.json` **hoặc** biến môi trường `KAGGLE_USERNAME`/`KAGGLE_KEY`.
 

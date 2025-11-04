@@ -1,378 +1,250 @@
-import io
-import subprocess
-from dataclasses import dataclass
+﻿from __future__ import annotations
+import os
+import sys
+import json
+import subprocess as sp
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Tuple, Dict, Any
 
 import numpy as np
 
-DATASET_NAME = "dgomonov/new-york-city-airbnb-open-data"
-FILENAME = "AB_NYC_2019.csv"
+# =========================
+# Helpers chung
+# =========================
 
-KEY_COLUMNS = [
-    "price",
-    "minimum_nights",
-    "number_of_reviews",
-    "reviews_per_month",
-    "calculated_host_listings_count",
-    "availability_365",
-    "latitude",
-    "longitude",
-]
+ROOT = Path(__file__).resolve().parents[1]  # repo root: .../project/
+DATA_DIR = ROOT / "data"
+RAW_DIR = DATA_DIR / "raw"
+PROCESSED_DIR = DATA_DIR / "processed"
+PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
+def _echo(msg: str) -> None:
+    print(f"[data] {msg}")
 
-def ensure_data_dirs(root: str = "data") -> Dict[str, Path]:
-    base = Path(root)
-    
-    raw = base / "raw"
-    raw.mkdir(parents=True, exist_ok=True)
-    
-    processed = base / "processed"
-    processed.mkdir(parents=True, exist_ok=True)
-    
-    return {"root": base, "raw": raw, "processed": processed}
-
-
-def kaggle_download_if_needed(dataset: str, filename: str, out_dir: str) -> Path:
+# =========================
+# Kaggle download (portable)
+# =========================
+def kaggle_download_if_needed(dataset: str, filename: str, out_dir: Path = RAW_DIR) -> Path:
     """
-    Tải đúng file đích từ Kaggle bằng CLI trên PATH, dùng --unzip nếu cần.
-    Không hardcode đường dẫn venv, không unzip thủ công.
+    Tải file từ Kaggle datasets nếu chưa tồn tại (không unzip thủ công).
+    - Nếu filename là .zip => dùng --unzip.
+    - Nếu là .csv / .csv.gz => KHÔNG --unzip. Kaggle có thể nén nội bộ; cứ tải đúng tên file.
     """
-    out_path = Path(out_dir)
-    out_path.mkdir(parents=True, exist_ok=True)
-    target = out_path / filename
-    if target.exists():
-        return target
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / filename
+    if out_path.exists() and out_path.stat().st_size > 0:
+        _echo(f"Đã có: {out_path.name} ({out_path.stat().st_size} bytes)")
+        return out_path
 
     cmd = [
-        "kaggle",
-        "datasets",
-        "download",
-        "-d",
-        dataset,
-        "-f",
-        filename,
-        "-p",
-        str(out_path),
+        "kaggle", "datasets", "download",
+        "-d", dataset,
+        "-f", filename,
+        "-p", str(out_dir),
         "--quiet",
-        "--unzip",
     ]
-    result = subprocess.run(cmd, check=False, capture_output=True, text=True)
-    if result.returncode != 0:
-        msg = (result.stderr or result.stdout or "").strip()
-        raise RuntimeError(f"Tải từ Kaggle thất bại: {msg or 'Unknown error'}")
+    # Nếu là .zip thì thêm --unzip
+    if filename.lower().endswith(".zip"):
+        cmd.append("--unzip")
 
-    if not target.exists():
-        cand = list(out_path.glob(filename))
-        if cand:
-            return cand[0]
-        raise RuntimeError(f"Tải Kaggle xong nhưng thiếu file {filename} trong {out_path}")
-    return target
-
-
-
-
-def load_airbnb_numpy(csv_path: Path) -> Dict[str, Dict[str, np.ndarray]]:
-    """
-    Đọc CSV bằng NumPy-only. Trả về:
-      {
-        "header": List[str],
-        "text": Dict[col, np.ndarray(object)],
-        "num":  Dict[col, np.ndarray(float64)]
-      }
-    """
-    raw_text = csv_path.read_text(encoding="utf-8")
-    placeholder = "\u0001"
-    cleaned = []
-    in_quotes = False
-    idx = 0
-    length = len(raw_text)
-    while idx < length:
-        ch = raw_text[idx]
-        if ch == '"':
-            if in_quotes and idx + 1 < length and raw_text[idx + 1] == '"':
-                cleaned.append('"')
-                idx += 1
-            else:
-                in_quotes = not in_quotes
-                cleaned.append('"')
-        elif ch == "," and in_quotes:
-            cleaned.append(placeholder)
-        elif ch in "\r\n":
-            if in_quotes:
-                cleaned.append(" ")
-                if ch == "\r" and idx + 1 < length and raw_text[idx + 1] == "\n":
-                    idx += 1
-            else:
-                cleaned.append(ch)
+    _echo(f"Tải từ Kaggle: {dataset} -> {filename}")
+    try:
+        sp.run(cmd, check=True)
+    except FileNotFoundError:
+        # fallback: thử ../.venv/bin/kaggle (nếu user cài vào venv)
+        venv_kaggle = ROOT / ".venv" / "bin" / "kaggle"
+        if venv_kaggle.exists():
+            cmd[0] = str(venv_kaggle)
+            sp.run(cmd, check=True)
         else:
-            cleaned.append(ch)
-        idx += 1
+            raise RuntimeError("Không tìm thấy lệnh 'kaggle'. Hãy cài kaggle CLI hoặc kích hoạt venv.")
 
-    cleaned_text = "".join(cleaned).replace("\r\n", "\n").replace("\r", "\n")
-    buffer = io.StringIO(cleaned_text)
+    # Sau tải, nếu là zip + --unzip thì file csv nằm trong out_dir; nếu csv thì đã xong.
+    if out_path.exists():
+        return out_path
+    # Nếu Kaggle đổi tên (ví dụ thêm số), tìm gần đúng:
+    candidates = list(out_dir.glob(Path(filename).name))
+    if candidates:
+        return candidates[0]
+    raise FileNotFoundError(f"Không tìm thấy file sau khi tải: {filename} trong {out_dir}")
+
+# =========================
+# NumPy-only CSV loader
+# =========================
+def load_csv_genfromtxt(csv_path: Path, delimiter: str = ",", skip_header: int = 1, dtype=None) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Đọc CSV bằng numpy.genfromtxt (NumPy-only).
+    - Trả về (header, data), với header là mảng 1D dtype=object tên cột.
+    - Các cột string sẽ có dtype=object; số => float.
+    """
+    if dtype is None:
+        # Cho phép mixed types; dùng None -> genfromtxt tự suy luận, missing -> np.nan
+        dtype = None
+
+    with open(csv_path, "r", encoding="utf-8") as f:
+        first = f.readline().rstrip("\n\r")
+        header = np.array(first.split(delimiter), dtype=object)
 
     data = np.genfromtxt(
-        buffer,
-        delimiter=",",
-        names=True,
-        dtype=None,
-        comments=None,
+        csv_path,
+        delimiter=delimiter,
+        skip_header=skip_header,
+        dtype=dtype,
         encoding="utf-8",
-        autostrip=True,
-        missing_values={"reviews_per_month": "", "last_review": "", "name": ""},
-        filling_values={"reviews_per_month": np.nan, "last_review": "", "name": ""}
+        autostrip=True
     )
+    # Khi chỉ 1 dòng, genfromtxt trả về 1D -> ép thành 2D
+    if data.ndim == 1:
+        data = data.reshape(1, -1)
+    return header, data
 
-    header = list(data.dtype.names or [])
-    num, text_blocks = {}, {}
-
-    for col in header:
-        col_arr = data[col]
-        if np.issubdtype(col_arr.dtype, np.number):
-            num[col] = col_arr.astype(np.float64)
-        else:
-            restored = np.char.replace(col_arr.astype(str), placeholder, ",")
-            text_blocks[col] = restored.astype(object)
-
-    return {"header": header, "text": text_blocks, "num": num}
-
-
-def _unique_with_sample(arr: np.ndarray, max_samples: int = 4) -> Dict[str, object]:
-    if arr.size == 0:
-        return {"count": 0, "values": []}
-    unique_vals = np.unique(arr)
-    sample = unique_vals[:max_samples].tolist()
-    return {"count": int(unique_vals.size), "values": sample}
-
-
-
-
-def print_small_category_full(name: str, arr: np.ndarray, max_full: int = 10) -> str:
+# =========================
+# In đầy đủ category nếu ít nhóm
+# =========================
+def print_small_category_full(values: np.ndarray, max_groups: int = 10, title: str = "Categories") -> None:
     """
-    Trả về chuỗi mô tả phân phối unique. Nếu số nhóm <= max_full, in đầy đủ tên.
+    In toàn bộ tên nhóm nếu số nhóm <= max_groups (đề yêu cầu).
     """
-    cats, counts = np.unique(arr, return_counts=True)
-    cats = cats.astype(str)
-    if cats.size <= max_full:
-        return f"{name}: {cats.size} groups -> " + ", ".join(cats.tolist())
-    return f"{name}: {cats.size} groups (top shown elsewhere)"
-
-def basic_checks(data: Dict[str, Dict[str, np.ndarray]]) -> Dict[str, object]:
-    header = data["header"]
-    num_data = data["num"]
-    text_data = data["text"]
-
-    if num_data:
-        total_rows = len(next(iter(num_data.values())))
-    elif text_data:
-        total_rows = len(next(iter(text_data.values())))
+    uniq, counts = np.unique(values.astype(object), return_counts=True)
+    order = np.argsort(-counts)
+    uniq, counts = uniq[order], counts[order]
+    print(f"== {title} (k={len(uniq)}) ==")
+    if len(uniq) <= max_groups:
+        for u, c in zip(uniq, counts):
+            print(f"- {u}: {c}")
     else:
-        total_rows = 0
+        # In top-10 + tổng số nhóm
+        for u, c in zip(uniq[:10], counts[:10]):
+            print(f"- {u}: {c}")
+        print(f"... ({len(uniq)-10} nhóm khác)")
 
-    neigh = text_data.get("neighbourhood_group", np.array([], dtype=object))
-    room = text_data.get("room_type", np.array([], dtype=object))
+# =========================
+# Tiền xử lý + đặc trưng (NumPy-only)
+# =========================
+def _is_nan(x: Any) -> bool:
+    try:
+        return np.isnan(x)
+    except Exception:
+        return False
 
-    # availability_365 = số ngày sẵn sàng trong 365 ngày tới
-    availability = num_data.get("availability_365", np.array([], dtype=np.int64))
-    out_of_range = int(np.sum((availability < 0) | (availability > 365))) if availability.size else 0
+def _safe_to_float(a: np.ndarray) -> np.ndarray:
+    out = a.astype(object)
+    v = np.vectorize(lambda x: np.nan if (x is None or x == "" or (isinstance(x, str) and x.strip()=="" )) else x)
+    out = v(out)
+    return out.astype(float)
 
-    rpm = num_data.get("reviews_per_month", np.array([], dtype=np.float64))
-    na_rpm = int(np.sum(np.isnan(rpm))) if rpm.size else 0
-
-    last_review = text_data.get("last_review", np.array([], dtype=object))
-    if last_review.size:
-        mask = np.array([str(val).strip() in {"", "NA"} for val in last_review], dtype=bool)
-        na_last = int(np.sum(mask))
-    else:
-        na_last = 0
-
-    return {
-        "n_rows": total_rows,
-        "n_cols": len(header),
-        "columns": header,
-        "uniq_neigh_group": _unique_with_sample(neigh),
-        "uniq_room_type": _unique_with_sample(room),
-        "out_of_range_avail": out_of_range,
-        "na_reviews_per_month": na_rpm,
-        "na_last_review": na_last,
-    }
-
-
-def load_and_check(root: str = "data") -> Dict[str, object]:
-    dirs = ensure_data_dirs(root=root)
-    csv_path = dirs["raw"] / FILENAME
-    
-    if not csv_path.exists():
-        kaggle_download_if_needed(
-            dataset=DATASET_NAME,
-            filename=FILENAME,
-            out_dir=str(dirs["raw"]),
-        )
-
-    data = load_airbnb_numpy(csv_path)
-    report = basic_checks(data)
-
-    print(f"Shape: {report['n_rows']} hang x {report['n_cols']} cot")
-    
-    key_cols = [col for col in KEY_COLUMNS if col in report["columns"]]
-    print(f"Important Columns: {', '.join(key_cols)}")
-    
-    neigh_arr = data["text"].get("neighbourhood_group", np.array([], dtype=object))
-    print(print_small_category_full("neighbourhood_group", neigh_arr))
-    
-    room_arr = data["text"].get("room_type", np.array([], dtype=object))
-    print(print_small_category_full("room_type", room_arr))
-    print(f"availability_365 out of [0, 365]: {report['out_of_range_avail']}")
-    print(f"reviews_per_month NA: {report['na_reviews_per_month']}")
-    print(f"last_review NA: {report['na_last_review']}")
-
-    return report
-
-
-def clip_outliers_percentile(
-    x: np.ndarray, p_low: float = 0.0, p_high: float = 99.5
-) -> Tuple[np.ndarray, float, float]:
-    """Clip theo phan tram vi de cat duoi cuc tri."""
-    lo, hi = np.percentile(x, [p_low, p_high])
-    return np.clip(x, lo, hi), float(lo), float(hi)
-
-
-def one_hot(values: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-    """One-hot cho mang object/string, tra ve (matrix, uniques)."""
-    uniq, inv = np.unique(values, return_inverse=True)
-    oh = np.eye(uniq.size, dtype=np.float64)[inv]
-    return oh, uniq
-
-
-def nonempty_mask(arr_obj: np.ndarray) -> np.ndarray:
-    """True neu text khong rong hoac la 'NA'."""
-    return np.array([str(v).strip() not in {"", "NA"} for v in arr_obj], dtype=bool)
-
-
-def safe_log1p(x: np.ndarray) -> np.ndarray:
-    """log1p an toan cho gia tri khong am."""
-    x = np.maximum(x, 0.0)
-    return np.log1p(x)
-
-
-@dataclass
-class PreprocessConfig:
-    p_high_min_nights: float = 99.0
-    p_high_host_listings: float = 99.0
-    host_big_threshold: float = 3.0
-
-
-@dataclass
-class PreprocessBundle:
-    X: np.ndarray
-    y: np.ndarray
-    y_log1p: np.ndarray
-    feature_names: np.ndarray
-    room_type_uniques: np.ndarray
-    neigh_group_uniques: np.ndarray
-
-
-def build_features(
-    num: Dict[str, np.ndarray],
-    txt: Dict[str, np.ndarray],
-    cfg: PreprocessConfig = PreprocessConfig(),
-) -> PreprocessBundle:
-    """Build tap dac trung NumPy-only tu dict cot so/text."""
-    price = num["price"].astype(np.float64)
-    minimum_nights = num["minimum_nights"].astype(np.float64)
-    number_of_reviews = num["number_of_reviews"].astype(np.float64)
-    host_listings = num["calculated_host_listings_count"].astype(np.float64)
-    availability_365 = np.clip(num["availability_365"].astype(np.float64), 0, 365)
-    reviews_per_month = num["reviews_per_month"].astype(np.float64)
-
-    room_type = txt["room_type"]
-    neigh_group = txt["neighbourhood_group"]
-    last_review = txt["last_review"]
-
-    rpm_filled = reviews_per_month.copy()
-    rpm_filled[np.isnan(rpm_filled)] = 0.0
-
-    min_nights_clip, _, _ = clip_outliers_percentile(
-        minimum_nights, 0.0, cfg.p_high_min_nights
-    )
-    host_listings_clip, _, _ = clip_outliers_percentile(
-        host_listings, 0.0, cfg.p_high_host_listings
-    )
-
-    has_last_review = nonempty_mask(last_review).astype(np.float64)
-    is_entire_home = (room_type == "Entire home/apt").astype(np.float64)
-    host_is_big = (host_listings_clip >= cfg.host_big_threshold).astype(np.float64)
-
-    oh_room, rt_uniques = one_hot(room_type)
-    oh_neigh, ng_uniques = one_hot(neigh_group)
-
-    X_blocks = [
-        safe_log1p(number_of_reviews).reshape(-1, 1),
-        safe_log1p(min_nights_clip).reshape(-1, 1),
-        safe_log1p(host_listings_clip).reshape(-1, 1),
-        (availability_365 / 365.0).reshape(-1, 1),
-        safe_log1p(rpm_filled).reshape(-1, 1),
-        is_entire_home.reshape(-1, 1),
-        host_is_big.reshape(-1, 1),
-        has_last_review.reshape(-1, 1),
-        oh_room,
-        oh_neigh,
-    ]
-    X = np.concatenate(X_blocks, axis=1)
-    y = price.copy()
-    y_log1p = safe_log1p(y)
-
-    feature_names = [
-        "log1p_num_reviews",
-        "log1p_minimum_nights",
-        "log1p_host_listings",
-        "days_available_ratio",
-        "log1p_reviews_per_month",
-        "is_entire_home",
-        "host_is_big_ge3",
-        "has_last_review",
-    ] + [f"rt::{s}" for s in rt_uniques.tolist()] + [
-        f"ng::{s}" for s in ng_uniques.tolist()
-    ]
-
-    return PreprocessBundle(
-        X=X,
-        y=y,
-        y_log1p=y_log1p,
-        feature_names=np.array(feature_names, dtype=object),
-        room_type_uniques=rt_uniques.astype(object),
-        neigh_group_uniques=ng_uniques.astype(object),
-    )
-
+def _one_hot(cat: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    uniq = np.unique(cat.astype(object))
+    idx = {u: i for i, u in enumerate(uniq)}
+    O = np.zeros((cat.shape[0], len(uniq)), dtype=float)
+    for r, v in enumerate(cat):
+        O[r, idx[v]] = 1.0
+    return O, uniq
 
 def preprocess_and_save(
-    root: str = "data",
-    out_name: str = "airbnb_2019_preprocessed.npz",
-    cfg: PreprocessConfig = PreprocessConfig(),
+    csv_path: Path,
+    out_npz: Path = PROCESSED_DIR / "airbnb_processed.npz",
+    price_col: str = "price",
+    borough_col: str = "neighbourhood_group",
+    numeric_cols: Tuple[str, ...] = ("minimum_nights", "number_of_reviews", "reviews_per_month", "calculated_host_listings_count", "availability_365"),
+    categorical_cols: Tuple[str, ...] = ("neighbourhood_group", "room_type"),
+    clip_percentiles: Tuple[float, float] = (1.0, 99.0)
 ) -> Path:
-    """End-to-end: load CSV tho, build features, luu npz."""
-    dirs = ensure_data_dirs(root=root)
-    csv_path = dirs["raw"] / FILENAME
-    if not csv_path.exists():
-        kaggle_download_if_needed(
-            dataset=DATASET_NAME, filename=FILENAME, out_dir=str(dirs["raw"])
-        )
-    data = load_airbnb_numpy(csv_path)
-    bundle = build_features(data["num"], data["text"], cfg)
+    """
+    Pipeline NumPy-only:
+    - Đọc CSV
+    - Làm sạch: fill NA cho numeric, reviews_per_month -> 0 nếu NA
+    - Clip ngoại lai theo percentiles
+    - y = log1p(price)
+    - One-hot cho cột phân loại
+    - Chuẩn hoá X bằng z-score (fit theo toàn bộ tập vào cho HW2; nếu cần train/test split thì fit theo train)
+    - Lưu .npz: X, y, feature_names, stats_mean, stats_std
+    """
+    header, data = load_csv_genfromtxt(csv_path)
 
-    out_path = dirs["processed"] / out_name
+    # map tên cột -> index
+    col2idx = {name: i for i, name in enumerate(header.tolist())}
+
+    # --- y = price -> log1p
+    price_raw = _safe_to_float(data[:, col2idx[price_col]])
+    y = np.log1p(price_raw)
+
+    # --- numeric features
+    feats = []
+    feat_names = []
+
+    for name in numeric_cols:
+        col = _safe_to_float(data[:, col2idx[name]])
+        # fill missing
+        if name == "reviews_per_month":
+            col = np.where(np.isnan(col), 0.0, col)
+        else:
+            # median fill
+            med = np.nanmedian(col)
+            col = np.where(np.isnan(col), med, col)
+
+        # clip ngoại lai
+        lo, hi = np.nanpercentile(col, clip_percentiles)
+        col = np.clip(col, lo, hi)
+
+        feats.append(col.reshape(-1, 1))
+        feat_names.append(name)
+
+    # --- categorical -> one-hot
+    for name in categorical_cols:
+        cat = data[:, col2idx[name]].astype(object)
+        O, uniq = _one_hot(cat)
+        feats.append(O)
+        feat_names.extend([f"{name}=={u}" for u in uniq])
+
+    X = np.hstack(feats)
+
+    # --- standardize (z-score)
+    mean = X.mean(axis=0, dtype=float)
+    std = X.std(axis=0, dtype=float)
+    std = np.where(std == 0, 1.0, std)
+    X_std = (X - mean) / std
+
+    # Lưu
     np.savez_compressed(
-        out_path,
-        X=bundle.X,
-        y=bundle.y,
-        y_log1p=bundle.y_log1p,
-        feature_names=bundle.feature_names,
-        room_type=bundle.room_type_uniques,
-        neighbourhood_group=bundle.neigh_group_uniques,
+        out_npz,
+        X=X_std,
+        y=y.astype(float),
+        feature_names=np.array(feat_names, dtype=object),
+        stats_mean=mean,
+        stats_std=std
     )
-    return out_path
+    _echo(f"Đã lưu: {out_npz} (X:{X_std.shape}, y:{y.shape})")
+    return out_npz
 
+# =========================
+# Check nhanh dataset
+# =========================
+def load_and_check(root: str | Path = RAW_DIR, filename: str | None = None) -> Dict[str, Any]:
+    """
+    Kiểm tra nhanh các nhóm (ví dụ borough) để in đủ tên nhóm khi nhóm ít.
+    """
+    root = Path(root)
+    if filename is None:
+        # đoán file CSV đầu tiên trong raw
+        csvs = sorted(root.glob("*.csv")) + sorted(root.glob("*.csv.gz"))
+        if not csvs:
+            raise FileNotFoundError(f"Không tìm thấy CSV trong {root}")
+        csv_path = csvs[0]
+    else:
+        csv_path = root / filename
 
-if __name__ == "__main__":
-    load_and_check()
+    header, data = load_csv_genfromtxt(csv_path)
+    col2idx = {name: i for i, name in enumerate(header.tolist())}
+
+    if "neighbourhood_group" in col2idx:
+        borough = data[:, col2idx["neighbourhood_group"]].astype(object)
+        print_small_category_full(borough, max_groups=10, title="Boroughs")
+
+    info = {
+        "rows": data.shape[0],
+        "cols": data.shape[1],
+        "columns": header.tolist(),
+        "csv_path": str(csv_path)
+    }
+    return info

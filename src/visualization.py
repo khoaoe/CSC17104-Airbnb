@@ -3,7 +3,6 @@ import numpy as np
 
 def _plt():
     from matplotlib import pyplot as plt  
-
     return plt
 
 
@@ -62,5 +61,20 @@ def plot_scatter_map(lon: np.ndarray, lat: np.ndarray, neigh_group: np.ndarray) 
     plt.title("Diem cho thue theo khu")
     cbar = plt.colorbar(sc, ticks=np.arange(groups.size))
     cbar.ax.set_yticklabels(groups.tolist())
+    plt.tight_layout()
+    plt.show()
+
+
+def corr_heatmap(X: np.ndarray, feature_names: np.ndarray | list[str], title: str = "Correlation (Pearson)") -> None:
+    """Vẽ heatmap tương quan Pearson cho X (NumPy-only tính corr)."""
+    C = np.corrcoef(X, rowvar=False)
+    fig, ax = plt.subplots(figsize=(8, 6))
+    im = ax.imshow(C, interpolation="nearest")
+    ax.set_title(title)
+    ax.set_xticks(range(len(feature_names)))
+    ax.set_yticks(range(len(feature_names)))
+    ax.set_xticklabels(feature_names, rotation=90, fontsize=8)
+    ax.set_yticklabels(feature_names, fontsize=8)
+    fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
     plt.tight_layout()
     plt.show()
