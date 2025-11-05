@@ -1,5 +1,0 @@
-numpy>=1.26
-matplotlib>=3.8
-seaborn>=0.13
-kaggle>=1.6
-scikit-learn>=1.5
