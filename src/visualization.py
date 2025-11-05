@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import numpy as np
 
 
@@ -78,3 +79,5 @@ def corr_heatmap(X: np.ndarray, feature_names: np.ndarray | list[str], title: st
     fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
     plt.tight_layout()
     plt.show()
+=======
+>>>>>>> parent of d1a2c48 (move to ./src)

@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 ﻿from __future__ import annotations
 import os
 import sys
@@ -5,6 +6,13 @@ import json
 import subprocess as sp
 from pathlib import Path
 from typing import Tuple, Dict, Any
+=======
+﻿import csv
+import subprocess
+import zipfile
+from pathlib import Path
+from typing import Dict, Iterable, List
+>>>>>>> parent of d1a2c48 (move to ./src)
 
 import numpy as np
 
@@ -127,6 +135,7 @@ def _is_nan(x: Any) -> bool:
     except Exception:
         return False
 
+<<<<<<< HEAD
 def _safe_to_float(a: np.ndarray) -> np.ndarray:
     out = a.astype(object)
     v = np.vectorize(lambda x: np.nan if (x is None or x == "" or (isinstance(x, str) and x.strip()=="" )) else x)
@@ -248,3 +257,64 @@ def load_and_check(root: str | Path = RAW_DIR, filename: str | None = None) -> D
         "csv_path": str(csv_path)
     }
     return info
+=======
+    # availability_365 = số ngày sẵn sàng trong 365 ngày tới
+    availability = num_data.get("availability_365", np.array([], dtype=np.int64))
+    out_of_range = int(np.sum((availability < 0) | (availability > 365))) if availability.size else 0
+
+    rpm = num_data.get("reviews_per_month", np.array([], dtype=np.float64))
+    na_rpm = int(np.sum(np.isnan(rpm))) if rpm.size else 0
+
+    last_review = text_data.get("last_review", np.array([], dtype=object))
+    if last_review.size:
+        mask = np.array([str(val).strip() in {"", "NA"} for val in last_review], dtype=bool)
+        na_last = int(np.sum(mask))
+    else:
+        na_last = 0
+
+    return {
+        "n_rows": total_rows,
+        "n_cols": len(header),
+        "columns": header,
+        "uniq_neigh_group": _unique_with_sample(neigh),
+        "uniq_room_type": _unique_with_sample(room),
+        "out_of_range_avail": out_of_range,
+        "na_reviews_per_month": na_rpm,
+        "na_last_review": na_last,
+    }
+
+
+def load_and_check(root: str = "data") -> Dict[str, object]:
+    dirs = ensure_data_dirs(root=root)
+    csv_path = dirs["raw"] / FILENAME
+    
+    if not csv_path.exists():
+        kaggle_download_if_needed(
+            dataset=DATASET_NAME,
+            filename=FILENAME,
+            out_dir=str(dirs["raw"]),
+        )
+
+    data = load_airbnb_numpy(csv_path)
+    report = basic_checks(data)
+
+    print(f"Shape: {report['n_rows']} hang x {report['n_cols']} cot")
+    
+    key_cols = [col for col in KEY_COLUMNS if col in report["columns"]]
+    print(f"Important Columns: {', '.join(key_cols)}")
+    
+    neigh = report["uniq_neigh_group"]
+    print(f"neighbourhood_group: {neigh['count']} groups -> {', '.join(map(str, neigh['values']))}")
+    
+    room = report["uniq_room_type"]
+    print(f"room_type: {room['count']} types -> {', '.join(map(str, room['values']))}")
+    print(f"availability_365 out of [0, 365]: {report['out_of_range_avail']}")
+    print(f"reviews_per_month NA: {report['na_reviews_per_month']}")
+    print(f"last_review NA: {report['na_last_review']}")
+
+    return report
+
+
+if __name__ == "__main__":
+    load_and_check()
+>>>>>>> parent of d1a2c48 (move to ./src)
