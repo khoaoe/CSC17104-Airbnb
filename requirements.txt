@@ -1,3 +1,5 @@
+# must have packages
 numpy 
 matplotlib
+# optional packages
 seaborn
