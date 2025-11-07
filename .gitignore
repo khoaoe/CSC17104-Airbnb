@@ -5,5 +5,5 @@
 .venv/
 pycache/
 repo.txt
-*.npz
-*.csv
+# *.npz
+# *.csv
