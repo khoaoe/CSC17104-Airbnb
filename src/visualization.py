@@ -101,3 +101,23 @@ def plot_hist_with_quantiles(x: np.ndarray, qs=(1, 50, 99), bins: int = 50, titl
     plt.ylabel("Count")
     plt.tight_layout()
 
+
+# --- Plot cho hồi quy ---
+def plot_pred_vs_true(y_true: np.ndarray, y_pred: np.ndarray, title: str = "Pred vs True"):
+    """Scatter y_true vs y_pred + đường y=x."""
+    y = y_true.astype(float).ravel()
+    p = y_pred.astype(float).ravel()
+    plt.figure()
+    plt.scatter(y, p, s=10, alpha=0.6)
+    lims = [min(np.min(y), np.min(p)), max(np.max(y), np.max(p))]
+    plt.plot(lims, lims, "--")
+    plt.xlabel("True"); plt.ylabel("Predicted"); plt.title(title)
+    plt.tight_layout()
+
+def plot_residuals_hist(y_true: np.ndarray, y_pred: np.ndarray, bins: int = 50, title: str = "Residuals"):
+    """Histogram residual (y - yhat)."""
+    e = y_true.astype(float).ravel() - y_pred.astype(float).ravel()
+    plt.figure()
+    plt.hist(e, bins=bins)
+    plt.title(title); plt.xlabel("Residual"); plt.ylabel("Count")
+    plt.tight_layout()

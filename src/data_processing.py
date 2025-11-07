@@ -414,6 +414,123 @@ def assemble_features_airbnb(
 
     return X, y, names, encoders
 
+# --- Geo features ---
+def _kmeans_pp_init(X: np.ndarray, k: int, rng: np.random.Generator) -> np.ndarray:
+    """Khởi tạo kmeans++ đơn giản cho ổn định."""
+    n = X.shape[0]
+    centroids = np.empty((k, X.shape[1]), dtype=float)
+    i0 = rng.integers(0, n)
+    centroids[0] = X[i0]
+    d2 = np.sum((X - centroids[0])**2, axis=1)
+
+    for i in range(1, k):
+        probs = d2 / np.sum(d2)
+        idx = rng.choice(n, p=probs)
+        centroids[i] = X[idx]
+        d2 = np.minimum(d2, np.sum((X - centroids[i])**2, axis=1))
+    return centroids
+
+def kmeans_fit_np(
+    X: np.ndarray, k: int, *, max_iter: int = 50, tol: float = 1e-4, seed: int = 42
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    KMeans tối giản cho 2D (cũng chạy được >2D):
+    Trả về (labels shape (n,), centroids shape (k, d)).
+    """
+    X = np.asarray(X, float)
+    rng = np.random.default_rng(seed)
+    C = _kmeans_pp_init(X, k, rng)
+
+    last_inertia = None
+    for _ in range(max_iter):
+        # assign
+        # (n,k) khoảng cách bình phương đến từng centroid
+        d2 = np.sum((X[:, None, :] - C[None, :, :])**2, axis=2)
+        labels = np.argmin(d2, axis=1)
+        # update
+        C_new = C.copy()
+        for j in range(k):
+            idx = (labels == j)
+            if idx.any():
+                C_new[j] = X[idx].mean(axis=0)
+        # hội tụ
+        inertia = np.sum((X - C_new[labels])**2)
+        if (last_inertia is not None) and (abs(last_inertia - inertia) <= tol * max(1.0, last_inertia)):
+            C = C_new
+            break
+        C = C_new
+        last_inertia = inertia
+    return labels, C
+
+def geo_kmeans_features_from_cols(
+    cols: Dict[str, np.ndarray], *, k: int = 8, lat_col: str = "latitude", lon_col: str = "longitude", seed: int = 42
+) -> Dict[str, np.ndarray]:
+    """
+    Tạo đặc trưng geo từ (lat, lon):
+      - 'geo_cluster' (id 0..k-1)
+      - 'geo_d2c_j' = khoảng cách Euclid tới centroid j (j=0..k-1)
+    """
+    lat = cols[lat_col].astype(float)
+    lon = cols[lon_col].astype(float)
+    Xgeo = np.column_stack([lat, lon])
+    labels, C = kmeans_fit_np(Xgeo, k=k, seed=seed)
+
+    # khoảng cách tới từng centroid
+    d2 = np.sum((Xgeo[:, None, :] - C[None, :, :])**2, axis=2)**0.5  # (n,k)
+    out = {"geo_cluster": labels.astype(int)}
+    for j in range(C.shape[0]):
+        out[f"geo_d2c_{j}"] = d2[:, j].astype(float)
+    return out
+
+# --- Features X và label y + geo features ---
+def assemble_features_airbnb_plus_geo(
+    cols: Dict[str, np.ndarray],
+    *,
+    num_cols: Tuple[str, ...] = (
+        "latitude","longitude","minimum_nights","number_of_reviews",
+        "reviews_per_month","calculated_host_listings_count","availability_365"
+    ),
+    cat_cols: Tuple[str, ...] = ("neighbourhood_group","room_type","neighbourhood"),
+    cat_min_count: int = 10,
+    target_col: str = "price",
+    clip_target_percentiles: Tuple[float, float] | None = (1.0, 99.0),
+    k_geo: int = 8,  # số cluster geo
+) -> Tuple[np.ndarray, np.ndarray, List[str], Dict[str, Dict[str, int]]]:
+    """
+    Giống assemble_features_airbnb nhưng bổ sung:
+      - one-hot của 'neighbourhood'
+      - geo features: one-hot cluster + khoảng cách tới centroid
+    """
+    # 1) base
+    X_base, y, names, encoders = assemble_features_airbnb(
+        cols,
+        num_cols=num_cols,
+        cat_cols=cat_cols,
+        cat_min_count=cat_min_count,
+        target_col=target_col,
+        clip_target_percentiles=clip_target_percentiles,
+    )
+
+    # 2) geo features
+    geo = geo_kmeans_features_from_cols(cols, k=k_geo)
+    # one-hot cluster
+    mapping_geo, K = fit_category_encoder(geo["geo_cluster"], min_count=1)
+    codes_geo = transform_category(geo["geo_cluster"], mapping_geo)
+    O_geo = one_hot(codes_geo, K)
+    # distances
+    d_cols = [v for k, v in geo.items() if k.startswith("geo_d2c_")]
+    D = np.column_stack(d_cols) if d_cols else np.empty((X_base.shape[0], 0), float)
+
+    X = np.column_stack([X_base, O_geo, D])
+    # tên cột geo
+    inv = sorted([(v, k) for k, v in mapping_geo.items()], key=lambda t: t[0])
+    names_geo = [f"geo_cluster={lab}" for _, lab in inv]
+    names = names + names_geo + list(geo.keys() - {"geo_cluster"})  # giữ nguyên thứ tự
+
+    encoders["geo_cluster"] = mapping_geo
+    return X, y, names, encoders
+
+
 
 # --- Gói gọn pipeline tiền xử lý thường dùng ---
 def preprocess_airbnb_default(
@@ -449,7 +566,7 @@ def preprocess_airbnb_default(
     return cols, report
 
 
-# --- Lưu gói dữ liệu đã xử lý ra .npz (compressed) ---
+# --- Lưu gói dữ liệu đã xử lý ra .npz ---
 def save_processed_npz(
     path: str,
     *,
@@ -470,3 +587,17 @@ def save_processed_npz(
         encoders=np.array(encoders if encoders is not None else {}, dtype=object),
         meta=np.array(meta if meta is not None else {}, dtype=object),
     )
+
+# --- Đọc gói dữ liệu đã xử lý từ .npz ---
+def load_processed_npz(path: str) -> Tuple[np.ndarray, np.ndarray, List[str], dict, dict]:
+    """
+    Đọc file .npz đã lưu từ bước tiền xử lý.
+    Trả về: (X, y, feature_names, encoders, meta)
+    """
+    d = np.load(path, allow_pickle=True)
+    X = d["X"]
+    y = d["y"]
+    feature_names = d["feature_names"].astype(str).tolist()
+    encoders = dict(d["encoders"].item()) if "encoders" in d.files else {}
+    meta = dict(d["meta"].item()) if "meta" in d.files else {}
+    return X, y, feature_names, encoders, meta
