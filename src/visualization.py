@@ -1,6 +1,6 @@
 # Trực quan hoá với Matplotlib (và dùng Seaborn nếu có)
 from __future__ import annotations
-from typing import Iterable, List, Tuple
+from typing import List
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -13,7 +13,7 @@ except Exception:
 
 # --- Histogram cho cột số ---
 def plot_hist(x: np.ndarray, bins: int = 30, log: bool = False, title: str = "", xlabel: str = "", ylabel: str = "Count"):
-    """Histogram nhanh; bỏ NaN trước khi vẽ."""
+    """Histogram nhanh; bỏ NaN trước khi vẽ"""
     x = x.astype(float)
     x = x[~np.isnan(x)]
     plt.figure()
@@ -26,7 +26,7 @@ def plot_hist(x: np.ndarray, bins: int = 30, log: bool = False, title: str = "",
 
 # --- Bar chart tần suất cho cột phân loại (có top-k) ---
 def plot_bar_counts(categories: np.ndarray, topk: int = 10, title: str = "", rotation: int = 0):
-    """Vẽ bar chart cho top-k giá trị xuất hiện nhiều nhất."""
+    """Vẽ bar chart cho top-k giá trị xuất hiện nhiều nhất"""
     vals, counts = np.unique(categories.astype(str), return_counts=True)
     order = np.argsort(-counts)[:topk]
     vals, counts = vals[order], counts[order]
@@ -40,7 +40,7 @@ def plot_bar_counts(categories: np.ndarray, topk: int = 10, title: str = "", rot
 
 # --- Scatter geo: lat/lon, có thể tô màu theo giá ---
 def plot_scatter_geo(lat: np.ndarray, lon: np.ndarray, c: np.ndarray | None = None, s: int = 6, title: str = ""):
-    """Scatter (lon, lat); nếu có c -> dùng như màu (ví dụ: price)."""
+    """Scatter (lon, lat); nếu có c -> dùng như màu (ví dụ: price)"""
     x = lon.astype(float)
     y = lat.astype(float)
     m = ~np.isnan(x) & ~np.isnan(y)
@@ -57,9 +57,10 @@ def plot_scatter_geo(lat: np.ndarray, lon: np.ndarray, c: np.ndarray | None = No
 
 # --- Heatmap ma trận tương quan ---
 def plot_corr_heatmap(C: np.ndarray, labels: List[str], title: str = "Correlation"):
-    """Vẽ heatmap corr; ưu tiên seaborn nếu có."""
+    """Vẽ heatmap corr; ưu tiên seaborn nếu có"""
     plt.figure()
     if _HAS_SNS:
+        print("Using seaborn for heatmap visualization")
         sns.heatmap(C, xticklabels=labels, yticklabels=labels, annot=False, square=True)
     else:
         im = plt.imshow(C, cmap="coolwarm", vmin=-1, vmax=1)
@@ -72,7 +73,7 @@ def plot_corr_heatmap(C: np.ndarray, labels: List[str], title: str = "Correlatio
 
 # --- Boxplot số theo nhóm (ví dụ: price theo room_type) ---
 def plot_box_by_cat(values: np.ndarray, categories: np.ndarray, title: str = "", ylabel: str = ""):
-    """Boxplot value theo từng nhóm từ 'categories'."""
+    """Boxplot value theo từng nhóm từ 'categories'"""
     vals = values.astype(float)
     cats = categories.astype(str)
     u = np.unique(cats)
@@ -83,3 +84,20 @@ def plot_box_by_cat(values: np.ndarray, categories: np.ndarray, title: str = "",
     if ylabel: plt.ylabel(ylabel)
     plt.xticks(rotation=0)
     plt.tight_layout()
+    
+# --- Histogram với vạch phân vị ---
+def plot_hist_with_quantiles(x: np.ndarray, qs=(1, 50, 99), bins: int = 50, title: str = "", xlabel: str = ""):
+    """Histogram + vạch phân vị để quan sát ngoại lai nhanh"""
+    x = x.astype(float)
+    x = x[~np.isnan(x)]
+    plt.figure()
+    plt.hist(x, bins=bins)
+    if qs:
+        qv = np.percentile(x, qs)
+        for v in qv:
+            plt.axvline(v, linestyle="--")
+    if title: plt.title(title)
+    if xlabel: plt.xlabel(xlabel)
+    plt.ylabel("Count")
+    plt.tight_layout()
+

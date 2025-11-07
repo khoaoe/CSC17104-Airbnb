@@ -246,3 +246,227 @@ def corr_matrix(cols: Dict[str, np.ndarray], num_cols: Iterable[str]) -> Tuple[n
         return np.full((len(keep), len(keep)), np.nan), keep
     C = np.corrcoef(X, rowvar=False)
     return C, keep
+
+
+# --- Lọc theo khung toạ độ NYC để loại record sai/ngoài vùng ---
+def filter_geo_bounds(
+    cols: Dict[str, np.ndarray],
+    lat_col: str = "latitude",
+    lon_col: str = "longitude",
+    lat_range: Tuple[float, float] = (40.5, 40.9),
+    lon_range: Tuple[float, float] = (-74.25, -73.7),
+) -> Tuple[Dict[str, np.ndarray], np.ndarray]:
+    """
+    Giữ các dòng có (lat, lon) nằm trong khung NYC thường dùng.
+    Trả về (cols_filtered, mask_kept).
+    """
+    lat = cols[lat_col].astype(float)
+    lon = cols[lon_col].astype(float)
+    m = (lat >= lat_range[0]) & (lat <= lat_range[1]) & (lon >= lon_range[0]) & (lon <= lon_range[1])
+    kept = {k: v[m] for k, v in cols.items()}
+    return kept, m
+
+
+# --- Điền thiếu cho reviews_per_month dựa trên logic "chưa có review" ---
+def fill_reviews_per_month_zero(cols: Dict[str, np.ndarray]) -> None:
+    """
+    Nếu number_of_reviews == 0 -> reviews_per_month = 0 (nếu đang NaN).
+    Giữ nguyên các trường hợp còn lại (để tránh bias).
+    """
+    if "reviews_per_month" not in cols or "number_of_reviews" not in cols:
+        return
+    rpm = cols["reviews_per_month"].astype(float)
+    nor = cols["number_of_reviews"].astype(float)
+    m = np.isnan(rpm) & (nor == 0)
+    if m.any():
+        rpm[m] = 0.0
+        cols["reviews_per_month"] = rpm  # in-place update
+
+
+# --- Điền thiếu bằng median cho các cột số được chỉ định ---
+def impute_numeric_median(cols: Dict[str, np.ndarray], numeric_cols: Iterable[str]) -> Dict[str, float]:
+    """
+    Impute median cho NaN ở các cột số; trả về dict {col: median_used} để log.
+    """
+    used = {}
+    for c in numeric_cols:
+        if c not in cols:
+            continue
+        x = cols[c].astype(float)
+        if np.isnan(x).any():
+            med = float(np.nanmedian(x))
+            x[np.isnan(x)] = med
+            cols[c] = x
+            used[c] = med
+    return used
+
+
+# --- Cắt ngoại lai theo percentile (winsorize nhẹ) ---
+def clip_outliers_percentile(x: np.ndarray, low_q: float = 1.0, high_q: float = 99.0) -> np.ndarray:
+    """
+    Trả về bản sao đã kẹp giá trị về [q_low, q_high] theo percentile.
+    Dùng cho các biến lệch/phân phối nặng đuôi như price, minimum_nights.
+    """
+    x = x.astype(float).copy()
+    ql, qh = np.nanpercentile(x, [low_q, high_q])
+    x[x < ql] = ql
+    x[x > qh] = qh
+    return x
+
+
+# --- Mã hoá phân loại -> id số (0..K-1), gom nhãn hiếm vào '__OTHER__' ---
+def fit_category_encoder(values: np.ndarray, min_count: int = 1) -> Tuple[Dict[str, int], int]:
+    """
+    Tạo mapping {category -> id}. Nhãn xuất hiện < min_count -> gom vào '__OTHER__'.
+    Trả về (mapping, n_classes). '__OTHER__' chỉ có nếu có nhãn hiếm.
+    """
+    vals = values.astype(str)
+    uniq, counts = np.unique(vals, return_counts=True)
+    mapping: Dict[str, int] = {}
+    next_id = 0
+    has_other = False
+    for v, c in zip(uniq, counts):
+        if c >= min_count:
+            mapping[v] = next_id
+            next_id += 1
+        else:
+            has_other = True
+    if has_other:
+        mapping["__OTHER__"] = next_id
+        next_id += 1
+    return mapping, next_id
+
+
+def transform_category(values: np.ndarray, mapping: Dict[str, int]) -> np.ndarray:
+    """
+    Biến mảng string -> mảng id số theo mapping. Nhãn lạ -> '__OTHER__' nếu có, ngược lại -> -1.
+    """
+    vals = values.astype(str)
+    has_other = "__OTHER__" in mapping
+    other_id = mapping.get("__OTHER__", -1)
+    out = np.empty(vals.shape[0], dtype=int)
+    for i, v in enumerate(vals):
+        out[i] = mapping.get(v, other_id if has_other else -1)
+    return out
+
+
+# --- One-hot từ mã số ---
+def one_hot(codes: np.ndarray, n_classes: int) -> np.ndarray:
+    """
+    One-hot encode: shape (n_samples, n_classes). codes ngoài [0..K-1] -> hàng zero.
+    """
+    n = codes.shape[0]
+    O = np.zeros((n, n_classes), dtype=float)
+    m = (codes >= 0) & (codes < n_classes)
+    O[np.arange(n)[m], codes[m]] = 1.0
+    return O
+
+
+# --- Lắp ma trận đặc trưng X và nhãn y (ví dụ: y=price) ---
+def assemble_features_airbnb(
+    cols: Dict[str, np.ndarray],
+    *,
+    num_cols: Iterable[str] = (
+        "latitude", "longitude",
+        "minimum_nights", "number_of_reviews", "reviews_per_month",
+        "calculated_host_listings_count", "availability_365",
+    ),
+    cat_cols: Iterable[str] = ("neighbourhood_group", "room_type"),
+    cat_min_count: int = 10,   # gom nhãn rất hiếm
+    target_col: str = "price",
+    clip_target_percentiles: Tuple[float, float] | None = (1.0, 99.0),
+) -> Tuple[np.ndarray, np.ndarray, List[str], Dict[str, Dict[str, int]]]:
+    """
+    Trả về (X, y, feature_names, encoders).
+    - num_cols: dùng trực tiếp (sau khi impute NaN bên ngoài).
+    - cat_cols: mã hoá one-hot (gom nhãn hiếm về '__OTHER__').
+    - target_col: y; có thể clip nhẹ để giảm ảnh hưởng ngoại lai.
+    """
+    feats: List[np.ndarray] = []
+    names: List[str] = []
+
+    # numeric
+    for c in num_cols:
+        if c in cols:
+            x = cols[c].astype(float)
+            feats.append(x.reshape(-1, 1))
+            names.append(c)
+
+    # categorical -> one-hot
+    encoders: Dict[str, Dict[str, int]] = {}
+    for c in cat_cols:
+        if c in cols:
+            mapping, K = fit_category_encoder(cols[c], min_count=cat_min_count)
+            encoders[c] = mapping
+            codes = transform_category(cols[c], mapping)
+            O = one_hot(codes, K)
+            feats.append(O)
+            # thêm tên cột theo thứ tự id
+            inv = sorted([(v, k) for k, v in mapping.items()], key=lambda t: t[0])
+            names.extend([f"{c}={lab}" for _, lab in inv])
+
+    X = np.column_stack(feats) if feats else np.empty((len(next(iter(cols.values()))), 0), float)
+
+    # target
+    y = cols[target_col].astype(float).copy()
+    if clip_target_percentiles is not None:
+        y = clip_outliers_percentile(y, *clip_target_percentiles)
+
+    return X, y, names, encoders
+
+
+# --- Gói gọn pipeline tiền xử lý thường dùng ---
+def preprocess_airbnb_default(
+    cols: Dict[str, np.ndarray],
+    *,
+    geo_filter: bool = True,
+    impute_median_for: Iterable[str] = (
+        "minimum_nights", "number_of_reviews", "reviews_per_month",
+        "calculated_host_listings_count", "availability_365",
+    ),
+) -> Tuple[Dict[str, np.ndarray], Dict[str, object]]:
+    """
+    Pipeline ngắn gọn:
+      1) (tuỳ chọn) lọc geo theo khung NYC
+      2) điền reviews_per_month = 0 nếu chưa có review
+      3) impute median cho các cột số còn thiếu
+    Trả về (cols_clean, report_dict).
+    """
+    report = {}
+
+    # 1) geo filter
+    if geo_filter:
+        cols2, m = filter_geo_bounds(cols)
+        report["kept_geo_ratio"] = float(m.mean())
+        cols = cols2
+
+    # 2) logic review
+    fill_reviews_per_month_zero(cols)
+
+    # 3) impute median
+    used = impute_numeric_median(cols, impute_median_for)
+    report["median_imputed"] = used
+    return cols, report
+
+
+# --- Lưu gói dữ liệu đã xử lý ra .npz (compressed) ---
+def save_processed_npz(
+    path: str,
+    *,
+    X: np.ndarray,
+    y: np.ndarray,
+    feature_names: List[str],
+    encoders: Dict[str, Dict[str, int]] | None = None,
+    meta: Dict[str, object] | None = None,
+) -> None:
+    """
+    Lưu các thành phần cần cho modeling sau: X, y, tên cột, encoder, meta.
+    """
+    np.savez_compressed(
+        path,
+        X=X,
+        y=y,
+        feature_names=np.array(feature_names, dtype="U"),
+        encoders=np.array(encoders if encoders is not None else {}, dtype=object),
+        meta=np.array(meta if meta is not None else {}, dtype=object),
+    )
