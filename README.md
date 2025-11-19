@@ -118,7 +118,7 @@ matplotlib
 seaborn
 ```
 
-Dữ liệu: tải `AB_NYC_2019.csv` vào `data/raw/` (Kaggle CLI hoặc tải thủ công)
+Dữ liệu: tải `AB_NYC_2019.csv` vào `data/raw/` (Kaggle CLI hoặc tải thủ công tại [link này](https://www.kaggle.com/datasets/dgomonov/new-york-city-airbnb-open-data))
 
 ---
 
@@ -142,7 +142,7 @@ Thứ tự chạy notebook:
    * Huấn luyện final (train+val), đánh giá test; trực quan hoá (pred vs. true, residuals).
    * (Tuỳ chọn) Lưu model `.npz`.
 
-> Code notebook gọi trực tiếp các hàm trong `src/`.
+> Code notebook gọi trực tiếp các hàm (API) trong `src/`
 
 ---
 
@@ -159,7 +159,7 @@ Thứ tự chạy notebook:
 **Nhận xét ngắn:**
 
 * Đã cải thiện rõ (đặc biệt **MAE**).
-* Sai số vẫn cao với định giá thực tế; còn dư địa nhờ đặc trưng vị trí phong phú hơn (khoảng cách tới POI), tương tác/đa thức, hoặc mô hình phi tuyến (tree/XGB).
+* Sai số vẫn cao với định giá thực tế; còn điểm cần cải thiện ở đặc trưng vị trí phong phú hơn (khoảng cách tới POI), tương tác/đa thức, hoặc mô hình phi tuyến (tree/XGB)
 
 **Trực quan hoá (trong notebook):**
 
