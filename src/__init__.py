@@ -36,6 +36,7 @@ from .visualization import (
     plot_hist_with_quantiles,
     plot_pred_vs_true,
     plot_residuals_hist,
+    plot_bar_values,
 )
 
 

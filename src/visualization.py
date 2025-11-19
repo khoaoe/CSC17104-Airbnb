@@ -104,7 +104,7 @@ def plot_hist_with_quantiles(x: np.ndarray, qs=(1, 50, 99), bins: int = 50, titl
 
 # --- Plot cho hồi quy ---
 def plot_pred_vs_true(y_true: np.ndarray, y_pred: np.ndarray, title: str = "Pred vs True"):
-    """Scatter y_true vs y_pred + đường y=x."""
+    """Scatter y_true vs y_pred + đường y=x"""
     y = y_true.astype(float).ravel()
     p = y_pred.astype(float).ravel()
     plt.figure()
@@ -115,9 +115,76 @@ def plot_pred_vs_true(y_true: np.ndarray, y_pred: np.ndarray, title: str = "Pred
     plt.tight_layout()
 
 def plot_residuals_hist(y_true: np.ndarray, y_pred: np.ndarray, bins: int = 50, title: str = "Residuals"):
-    """Histogram residual (y - yhat)."""
+    """Histogram residual (y - yhat)"""
     e = y_true.astype(float).ravel() - y_pred.astype(float).ravel()
     plt.figure()
     plt.hist(e, bins=bins)
     plt.title(title); plt.xlabel("Residual"); plt.ylabel("Count")
+    plt.tight_layout()
+
+def plot_bar_values(
+    categories: np.ndarray,
+    values: np.ndarray,
+    *,
+    title: str = "",
+    xlabel: str = "",
+    ylabel: str = "Value",
+    sort_by: str = "value",   # "value", "label" hoặc "none"
+    ascending: bool = False,
+    topk: int | None = None,
+    rotation: int = 0,
+):
+    """
+    Vẽ bar chart cho cặp (category, value).
+    Dùng khi đã tính sẵn thống kê theo nhóm (mean, median, ...).
+
+    Parameters
+    ----------
+    categories : array-like
+        Tên nhóm (neighbourhood_group, room_type, ...), sẽ được cast sang str
+    values : array-like
+        Giá trị số tương ứng (mean price, median price, ...)
+    sort_by : {"value", "label", "none"}
+        Sắp xếp theo giá trị, theo nhãn, hoặc giữ nguyên thứ tự.
+    ascending : bool
+        True -> sắp xếp tăng dần, False -> giảm dần
+    topk : int | None
+        Nếu không None thì chỉ lấy top-k theo thứ tự sau khi sort
+    rotation : int
+        Góc xoay nhãn trục x (độ)
+    """
+    cats = np.asarray(categories).astype(str)
+    vals = np.asarray(values).astype(float)
+
+    # Bỏ NaN trong values nếu có
+    mask = ~np.isnan(vals)
+    cats, vals = cats[mask], vals[mask]
+
+    # Tính thứ tự sắp xếp
+    if sort_by == "value":
+        order = np.argsort(vals)
+        if not ascending:
+            order = order[::-1]
+    elif sort_by == "label":
+        order = np.argsort(cats)
+        if not ascending:
+            order = order[::-1]
+    else:
+        order = np.arange(len(vals))
+
+    if topk is not None:
+        order = order[:topk]
+
+    cats, vals = cats[order], vals[order]
+
+    plt.figure()
+    plt.bar(cats, vals)
+    if title:
+        plt.title(title)
+    if xlabel:
+        plt.xlabel(xlabel)
+    if ylabel:
+        plt.ylabel(ylabel)
+    ha = "right" if rotation else "center"
+    plt.xticks(rotation=rotation, ha=ha)
     plt.tight_layout()
