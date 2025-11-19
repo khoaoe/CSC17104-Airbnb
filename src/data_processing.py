@@ -23,7 +23,7 @@ date_cols = {"last_review"}
 
 # --- Tìm file CSV trong thư mục (ưu tiên AB_NYC_2019.csv) ---
 def find_csv(root: str) -> str:
-    """Tìm file .csv trong thư mục root; ưu tiên 'AB_NYC_2019.csv'."""
+    """Tìm file .csv trong thư mục root; ưu tiên 'AB_NYC_2019.csv'"""
     cand = os.path.join(root, "AB_NYC_2019.csv")
     if os.path.isfile(cand):
         return cand
@@ -36,7 +36,7 @@ def find_csv(root: str) -> str:
 # --- Parse cột ngày sang datetime64[D] ---
 def _parse_date_col(s: np.ndarray) -> np.ndarray:
     """
-    Chuyển mảng string 'YYYY-MM-DD' -> datetime64[D]; rỗng -> NaT.
+    Chuyển mảng string 'YYYY-MM-DD' -> datetime64[D]; rỗng -> NaT
     """
     out = np.empty(s.shape, dtype="datetime64[D]")
     # mask rỗng
@@ -79,14 +79,14 @@ def _safe_date(x: str):
     
 def _read_csv_dict(path: str) -> Dict[str, np.ndarray]:
     """
-    Đọc CSV bằng csv.DictReader để xử lý đúng dấu phẩy trong chuỗi được quote.
-    Trả về dict {column -> ndarray} với dtype phù hợp.
+    Đọc CSV bằng csv.DictReader để xử lý đúng dấu phẩy trong chuỗi được quote
+    Trả về dict {column -> ndarray} với dtype phù hợp
     """
     with open(path, "r", encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f)
         fieldnames = reader.fieldnames
         if not fieldnames:
-            raise ValueError("Không đọc được header CSV.")
+            raise ValueError("Không đọc được header CSV")
         # Chuẩn hoá tên cột (giữ nguyên như trong file)
         cols_py = {k: [] for k in fieldnames}
 
@@ -116,8 +116,8 @@ def _read_csv_dict(path: str) -> Dict[str, np.ndarray]:
 # --- API load chính cho dataset ---
 def load_airbnb(path_or_dir: str) -> Dict[str, np.ndarray]:
     """
-    Load dataset Airbnb NYC 2019 (CSV chuẩn, có quoted fields).
-    - Nếu truyền thư mục: tự tìm file CSV.
+    Load dataset Airbnb NYC 2019 (CSV chuẩn, có quoted fields)
+    - Nếu truyền thư mục: tự tìm file CSV
     - Trả về: dict {column -> ndarray}
     """
     csv_path = path_or_dir
@@ -129,7 +129,7 @@ def load_airbnb(path_or_dir: str) -> Dict[str, np.ndarray]:
 # --- Thống kê missing theo cột ---
 def missing_summary(cols: Dict[str, np.ndarray]) -> np.ndarray:
     """
-    Trả về bảng [column, missing_count, missing_rate_%] (dtype object/float).
+    Trả về bảng [column, missing_count, missing_rate_%] (dtype object/float)
     """
     names, miss_cnt, miss_rate = [], [], []
     n = len(next(iter(cols.values())))
@@ -155,7 +155,7 @@ def missing_summary(cols: Dict[str, np.ndarray]) -> np.ndarray:
 # --- Đếm unique cho cột phân loại ---
 def unique_summary(cols: Dict[str, np.ndarray], cat_cols: Iterable[str]) -> np.ndarray:
     """
-    Bảng [column, unique_count, unique_rate_%] cho các cột phân loại.
+    Bảng [column, unique_count, unique_rate_%] cho các cột phân loại
     """
     names, ucnt, urate = [], [], []
     n = len(next(iter(cols.values())))
@@ -176,7 +176,7 @@ def unique_summary(cols: Dict[str, np.ndarray], cat_cols: Iterable[str]) -> np.n
 # --- Describe nhanh cho cột số ---
 def describe_numeric(cols: Dict[str, np.ndarray], num_cols: Iterable[str]) -> np.ndarray:
     """
-    Trả về bảng thống kê cơ bản cho cột số: min, p25, p50, p75, max, mean, std.
+    Trả về bảng thống kê cơ bản cho cột số: min, p25, p50, p75, max, mean, std
     """
     stats = []
     dtype = [
@@ -201,7 +201,7 @@ def describe_numeric(cols: Dict[str, np.ndarray], num_cols: Iterable[str]) -> np
 # --- Groupby + reduce nhanh (mean/sum/count) ---
 def groupby_reduce(keys: np.ndarray, values: np.ndarray, how: str = "mean") -> Tuple[np.ndarray, np.ndarray]:
     """
-    Nhóm theo 'keys' (string hoặc số) và gom 'values' bằng mean/sum/count.
+    Nhóm theo 'keys' (string hoặc số) và gom 'values' bằng mean/sum/count
     """
     uk, inv = np.unique(keys, return_inverse=True)
     if how == "count":
@@ -223,7 +223,7 @@ def groupby_reduce(keys: np.ndarray, values: np.ndarray, how: str = "mean") -> T
 # --- Top-k theo tần suất ---
 def topk_counts(a: np.ndarray, k: int = 10) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Trả về (giá trị, count) theo tần suất giảm dần, lấy top-k.
+    Trả về (giá trị, count) theo tần suất giảm dần, lấy top-k
     """
     vals, counts = np.unique(a.astype(str), return_counts=True)
     order = np.argsort(-counts)
@@ -235,7 +235,7 @@ def topk_counts(a: np.ndarray, k: int = 10) -> Tuple[np.ndarray, np.ndarray]:
 # --- Ma trận tương quan cho tập cột số ---
 def corr_matrix(cols: Dict[str, np.ndarray], num_cols: Iterable[str]) -> Tuple[np.ndarray, List[str]]:
     """
-    Tính corrcoef (Pearson) giữa các cột số; tự động bỏ NaN theo hàng.
+    Tính corrcoef (Pearson) giữa các cột số; tự động bỏ NaN theo hàng
     """
     keep = [c for c in num_cols if c in cols]
     X = np.column_stack([cols[c].astype(float) for c in keep])
@@ -257,8 +257,8 @@ def filter_geo_bounds(
     lon_range: Tuple[float, float] = (-74.25, -73.7),
 ) -> Tuple[Dict[str, np.ndarray], np.ndarray]:
     """
-    Giữ các dòng có (lat, lon) nằm trong khung NYC thường dùng.
-    Trả về (cols_filtered, mask_kept).
+    Giữ các dòng có (lat, lon) nằm trong khung NYC thường dùng
+    Trả về (cols_filtered, mask_kept)
     """
     lat = cols[lat_col].astype(float)
     lon = cols[lon_col].astype(float)
@@ -270,8 +270,8 @@ def filter_geo_bounds(
 # --- Điền thiếu cho reviews_per_month dựa trên logic "chưa có review" ---
 def fill_reviews_per_month_zero(cols: Dict[str, np.ndarray]) -> None:
     """
-    Nếu number_of_reviews == 0 -> reviews_per_month = 0 (nếu đang NaN).
-    Giữ nguyên các trường hợp còn lại (để tránh bias).
+    Nếu number_of_reviews == 0 -> reviews_per_month = 0 (nếu đang NaN)
+    Giữ nguyên các trường hợp còn lại (để tránh bias)
     """
     if "reviews_per_month" not in cols or "number_of_reviews" not in cols:
         return
@@ -286,7 +286,7 @@ def fill_reviews_per_month_zero(cols: Dict[str, np.ndarray]) -> None:
 # --- Điền thiếu bằng median cho các cột số được chỉ định ---
 def impute_numeric_median(cols: Dict[str, np.ndarray], numeric_cols: Iterable[str]) -> Dict[str, float]:
     """
-    Impute median cho NaN ở các cột số; trả về dict {col: median_used} để log.
+    Impute median cho NaN ở các cột số; trả về dict {col: median_used} để log
     """
     used = {}
     for c in numeric_cols:
@@ -304,8 +304,8 @@ def impute_numeric_median(cols: Dict[str, np.ndarray], numeric_cols: Iterable[st
 # --- Cắt ngoại lai theo percentile (winsorize nhẹ) ---
 def clip_outliers_percentile(x: np.ndarray, low_q: float = 1.0, high_q: float = 99.0) -> np.ndarray:
     """
-    Trả về bản sao đã kẹp giá trị về [q_low, q_high] theo percentile.
-    Dùng cho các biến lệch/phân phối nặng đuôi như price, minimum_nights.
+    Trả về bản sao đã kẹp giá trị về [q_low, q_high] theo percentile
+    Dùng cho các biến lệch/phân phối nặng đuôi như price, minimum_nights
     """
     x = x.astype(float).copy()
     ql, qh = np.nanpercentile(x, [low_q, high_q])
@@ -317,8 +317,8 @@ def clip_outliers_percentile(x: np.ndarray, low_q: float = 1.0, high_q: float = 
 # --- Mã hoá phân loại -> id số (0..K-1), gom nhãn hiếm vào '__OTHER__' ---
 def fit_category_encoder(values: np.ndarray, min_count: int = 1) -> Tuple[Dict[str, int], int]:
     """
-    Tạo mapping {category -> id}. Nhãn xuất hiện < min_count -> gom vào '__OTHER__'.
-    Trả về (mapping, n_classes). '__OTHER__' chỉ có nếu có nhãn hiếm.
+    Tạo mapping {category -> id}. Nhãn xuất hiện < min_count -> gom vào '__OTHER__'
+    Trả về (mapping, n_classes). '__OTHER__' chỉ có nếu có nhãn hiếm
     """
     vals = values.astype(str)
     uniq, counts = np.unique(vals, return_counts=True)
@@ -339,7 +339,7 @@ def fit_category_encoder(values: np.ndarray, min_count: int = 1) -> Tuple[Dict[s
 
 def transform_category(values: np.ndarray, mapping: Dict[str, int]) -> np.ndarray:
     """
-    Biến mảng string -> mảng id số theo mapping. Nhãn lạ -> '__OTHER__' nếu có, ngược lại -> -1.
+    Biến mảng string -> mảng id số theo mapping. Nhãn lạ -> '__OTHER__' nếu có, ngược lại -> -1
     """
     vals = values.astype(str)
     has_other = "__OTHER__" in mapping
@@ -353,7 +353,7 @@ def transform_category(values: np.ndarray, mapping: Dict[str, int]) -> np.ndarra
 # --- One-hot từ mã số ---
 def one_hot(codes: np.ndarray, n_classes: int) -> np.ndarray:
     """
-    One-hot encode: shape (n_samples, n_classes). codes ngoài [0..K-1] -> hàng zero.
+    One-hot encode: shape (n_samples, n_classes). codes ngoài [0..K-1] -> hàng zero
     """
     n = codes.shape[0]
     O = np.zeros((n, n_classes), dtype=float)
@@ -378,9 +378,9 @@ def assemble_features_airbnb(
 ) -> Tuple[np.ndarray, np.ndarray, List[str], Dict[str, Dict[str, int]]]:
     """
     Trả về (X, y, feature_names, encoders).
-    - num_cols: dùng trực tiếp (sau khi impute NaN bên ngoài).
-    - cat_cols: mã hoá one-hot (gom nhãn hiếm về '__OTHER__').
-    - target_col: y; có thể clip nhẹ để giảm ảnh hưởng ngoại lai.
+    - num_cols: dùng trực tiếp (sau khi impute NaN bên ngoài)
+    - cat_cols: mã hoá one-hot (gom nhãn hiếm về '__OTHER__')
+    - target_col: y; có thể clip nhẹ để giảm ảnh hưởng ngoại lai
     """
     feats: List[np.ndarray] = []
     names: List[str] = []
@@ -416,7 +416,7 @@ def assemble_features_airbnb(
 
 # --- Geo features ---
 def _kmeans_pp_init(X: np.ndarray, k: int, rng: np.random.Generator) -> np.ndarray:
-    """Khởi tạo kmeans++ đơn giản cho ổn định."""
+    """Khởi tạo kmeans++ đơn giản cho ổn định"""
     n = X.shape[0]
     centroids = np.empty((k, X.shape[1]), dtype=float)
     i0 = rng.integers(0, n)
@@ -483,14 +483,19 @@ def geo_kmeans_features_from_cols(
     return out
 
 # --- Features X và label y + geo features ---
+from typing import Dict, Tuple, List
+import numpy as np
+
 def assemble_features_airbnb_plus_geo(
     cols: Dict[str, np.ndarray],
     *,
     num_cols: Tuple[str, ...] = (
-        "latitude","longitude","minimum_nights","number_of_reviews",
-        "reviews_per_month","calculated_host_listings_count","availability_365"
+        "latitude", "longitude", "minimum_nights", "number_of_reviews",
+        "reviews_per_month", "calculated_host_listings_count", "availability_365",
     ),
-    cat_cols: Tuple[str, ...] = ("neighbourhood_group","room_type","neighbourhood"),
+    cat_cols: Tuple[str, ...] = (
+        "neighbourhood_group", "room_type", "neighbourhood",
+    ),
     cat_min_count: int = 10,
     target_col: str = "price",
     clip_target_percentiles: Tuple[float, float] | None = (1.0, 99.0),
@@ -498,38 +503,67 @@ def assemble_features_airbnb_plus_geo(
 ) -> Tuple[np.ndarray, np.ndarray, List[str], Dict[str, Dict[str, int]]]:
     """
     Giống assemble_features_airbnb nhưng bổ sung:
-      - one-hot của 'neighbourhood'
+      - numeric: 'dist_center' (khoảng cách đến trung tâm thành phố)
+      - categorical: 'ngrt' = neighbourhood_group __ room_type
       - geo features: one-hot cluster + khoảng cách tới centroid
     """
-    # 1) base
+    # Copy cols để không phá dict gốc bên ngoài
+    cols_ext: Dict[str, np.ndarray] = dict(cols)
+
+    lat = cols_ext["latitude"].astype(float)
+    lon = cols_ext["longitude"].astype(float)
+    ng  = cols_ext["neighbourhood_group"].astype(str)
+    rt  = cols_ext["room_type"].astype(str)
+
+    # 1) Distance to center (ví dụ Times Square)
+    center_lat, center_lon = 40.7580, -73.9855  # Times Square
+    dist_center = np.sqrt((lat - center_lat) ** 2 + (lon - center_lon) ** 2)
+    cols_ext["dist_center"] = dist_center
+
+    # 2) Interaction borough × room_type
+    ngrt = np.core.defchararray.add(ng, "__")
+    ngrt = np.core.defchararray.add(ngrt, rt)
+    cols_ext["ngrt"] = ngrt
+
+    # Chuyển num_cols / cat_cols thành list để append được
+    num_cols_list = list(num_cols) + ["dist_center"]
+    cat_cols_list = list(cat_cols) + ["ngrt"]
+
+    # 3) Base features từ assemble_features_airbnb
     X_base, y, names, encoders = assemble_features_airbnb(
-        cols,
-        num_cols=num_cols,
-        cat_cols=cat_cols,
+        cols_ext,
+        num_cols=tuple(num_cols_list),
+        cat_cols=tuple(cat_cols_list),
         cat_min_count=cat_min_count,
         target_col=target_col,
         clip_target_percentiles=clip_target_percentiles,
     )
 
-    # 2) geo features
-    geo = geo_kmeans_features_from_cols(cols, k=k_geo)
+    # 4) Geo features từ lat/lon
+    geo = geo_kmeans_features_from_cols(cols_ext, k=k_geo)
     # one-hot cluster
     mapping_geo, K = fit_category_encoder(geo["geo_cluster"], min_count=1)
     codes_geo = transform_category(geo["geo_cluster"], mapping_geo)
     O_geo = one_hot(codes_geo, K)
-    # distances
+
+    # distances đến các centroid (các cột geo_d2c_*)
     d_cols = [v for k, v in geo.items() if k.startswith("geo_d2c_")]
     D = np.column_stack(d_cols) if d_cols else np.empty((X_base.shape[0], 0), float)
 
+    # 5) Gộp tất cả vào X
     X = np.column_stack([X_base, O_geo, D])
-    # tên cột geo
+
+    # Tên cột cho geo_cluster one-hot
     inv = sorted([(v, k) for k, v in mapping_geo.items()], key=lambda t: t[0])
     names_geo = [f"geo_cluster={lab}" for _, lab in inv]
-    names = names + names_geo + list(geo.keys() - {"geo_cluster"})  # giữ nguyên thứ tự
+
+    # Tên cột cho các khoảng cách đến centroid (theo thứ tự d_cols)
+    dist_names = [f"geo_d2c_{i}" for i in range(len(d_cols))]
+
+    names = names + names_geo + dist_names
 
     encoders["geo_cluster"] = mapping_geo
     return X, y, names, encoders
-
 
 
 # --- Gói gọn pipeline tiền xử lý thường dùng ---

@@ -212,7 +212,7 @@ Thứ tự chạy notebook:
    **Giải pháp:** gộp nhãn hiếm; (định hướng) dùng OOF target-encoding
 
 4. **Vị trí phi tuyến mạnh** (lat/lon không tuyến tính)
-   **Giải pháp:** **KMeans geo** + khoảng cách centroid; (định hướng) thêm **khoảng cách tới POI**
+   **Giải pháp:** **KMeans geo** + khoảng cách centroid; (định hướng) thêm **khoảng cách tới các vị trí trung tâm (ở đây lấy Time Squares)**
 
 5. **Đánh giá có thể lạc quan theo không gian** (random split)
    **Giải pháp:** (định hướng) bổ sung **Group/Spatial CV** để kiểm tra tổng quát hoá theo không gian
@@ -221,7 +221,7 @@ Thứ tự chạy notebook:
 
 ## Future Improvements
 
-* **Đặc trưng vị trí:** khoảng cách Haversine tới POI (Times Square, Central Park, Wall Street, …), geohash grid, tương tác `room_type × geo`
+* **Đặc trưng vị trí:** tương tác `room_type × geo`
 * **Mã hoá phân loại:** **OOF target-encoding** cho `neighbourhood`/`host_id`
 * **Mô hình:** RandomForest/XGBoost/LightGBM để bắt phi tuyến (đối chiếu với Ridge)
 * **Text features:** n-gram từ `name` (bag-of-words thưa), sentiment/keyword
