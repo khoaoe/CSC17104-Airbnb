@@ -1,4 +1,4 @@
-# Airbnb NYC 2019 — NumPy Data Science Homework
+# [CSC17104 - Lab02] Airbnb NYC 2019
 
 Dự án áp dụng **NumPy-only** cho tiền xử lý và mô hình hóa dữ liệu **New York City Airbnb Open Data (2019)**. Không dùng pandas cho xử lý lõi; trực quan hoá bằng Matplotlib. Mục tiêu: xây dựng pipeline sạch, ngắn gọn, dễ debug và tái sử dụng.
 
