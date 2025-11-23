@@ -2,11 +2,10 @@
 from __future__ import annotations
 import os
 import glob
-from typing import Dict, Iterable, Tuple, List
+from typing import Dict, Iterable, Tuple, List, Optional
 import numpy as np
 from datetime import datetime
 import csv
-
 
 # --- Cấu hình cột mặc định cho dataset AB_NYC_2019 ---
 numeric_cols = [
@@ -374,7 +373,7 @@ def assemble_features_airbnb(
     cat_cols: Iterable[str] = ("neighbourhood_group", "room_type"),
     cat_min_count: int = 10,   # gom nhãn rất hiếm
     target_col: str = "price",
-    clip_target_percentiles: Tuple[float, float] | None = (1.0, 99.0),
+    clip_target_percentiles: Optional[Tuple[float, float]] = (1.0, 99.0),
 ) -> Tuple[np.ndarray, np.ndarray, List[str], Dict[str, Dict[str, int]]]:
     """
     Trả về (X, y, feature_names, encoders).
@@ -442,6 +441,7 @@ def kmeans_fit_np(
     C = _kmeans_pp_init(X, k, rng)
 
     last_inertia = None
+    labels = np.zeros(X.shape[0], dtype=int)
     for _ in range(max_iter):
         # assign
         # (n,k) khoảng cách bình phương đến từng centroid
@@ -498,7 +498,7 @@ def assemble_features_airbnb_plus_geo(
     ),
     cat_min_count: int = 10,
     target_col: str = "price",
-    clip_target_percentiles: Tuple[float, float] | None = (1.0, 99.0),
+    clip_target_percentiles: Optional[Tuple[float, float]] = (1.0, 99.0),
     k_geo: int = 8,  # số cluster geo
 ) -> Tuple[np.ndarray, np.ndarray, List[str], Dict[str, Dict[str, int]]]:
     """
@@ -521,8 +521,8 @@ def assemble_features_airbnb_plus_geo(
     cols_ext["dist_center"] = dist_center
 
     # 2) Interaction borough × room_type
-    ngrt = np.core.defchararray.add(ng, "__")
-    ngrt = np.core.defchararray.add(ngrt, rt)
+    ngrt = np.char.add(ng, "__")
+    ngrt = np.char.add(ngrt, rt)
     cols_ext["ngrt"] = ngrt
 
     # Chuyển num_cols / cat_cols thành list để append được
@@ -607,8 +607,8 @@ def save_processed_npz(
     X: np.ndarray,
     y: np.ndarray,
     feature_names: List[str],
-    encoders: Dict[str, Dict[str, int]] | None = None,
-    meta: Dict[str, object] | None = None,
+    encoders: Optional[Dict[str, Dict[str, int]]] = None,
+    meta: Optional[Dict[str, object]] = None,
 ) -> None:
     """
     Lưu các thành phần cần cho modeling sau: X, y, tên cột, encoder, meta.
