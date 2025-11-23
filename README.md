@@ -1,7 +1,8 @@
 # [CSC17104 - Lab02] Airbnb NYC 2019
 
-Dự án tuân theo yêu cầu  **NumPy-only** cho tiền xử lý và xây dựng mô hình dự đoán cho dataset **New York City Airbnb Open Data (2019)**
+Đồ án **NumPy-only** để tiền xử lý và xây dựng mô hình dự đoán cho dataset [**New York City Airbnb Open Data (2019)**](https://www.kaggle.com/datasets/dgomonov/new-york-city-airbnb-open-data)
 
+Github repository link: [Github](https://github.com/khoaoe/hcmus-csc17104-airbnb-data-analysis)
 ---
 
 ## Mục lục
@@ -22,20 +23,20 @@ Dự án tuân theo yêu cầu  **NumPy-only** cho tiền xử lý và xây dự
 
 ## Giới thiệu
 
-**Bài toán** Dự đoán **giá thuê/đêm** (USD) của listing Airbnb tại New York dựa trên thông tin của listing (vị trí, loại phòng, lượt review, ...)
+* **Bài toán** Dự đoán **giá thuê/đêm** (USD) của listing Airbnb tại New York dựa trên thông tin của listing (vị trí, loại phòng, lượt review, ...)
 
-**Động lực & ứng dụng**
+* **Động lực & ứng dụng**
 
-- Giúp chủ sở hữu định giá hợp lý
-- Nền tảng gợi ý giá
-- Phục vụ nghiên cứu, phân tích yếu tố ảnh hưởng đến giá cho thuê
+   * Giúp chủ sở hữu định giá hợp lý
+   * Nền tảng gợi ý giá
+   * Phục vụ nghiên cứu, phân tích yếu tố ảnh hưởng đến giá cho thuê
 
-**Mục tiêu cụ thể**
+* **Mục tiêu cụ thể**
 
-1. Xây dựng pipeline **EDA → Preprocessing → Modeling** chỉ dùng **NumPy**
-2. Tạo đặc trưng vị trí, giảm lệch đuôi bằng log-transform.
-3. Huấn luyện mô hình hồi quy tuyến tính (Ridge) + chọn siêu tham số bằng K-Fold CV
-4. Báo cáo metric (RMSE/MAE/R²) và trực quan hoá kết quả
+   1. Xây dựng pipeline **EDA → Preprocessing → Modeling** chỉ dùng **NumPy**
+   2. Tạo đặc trưng vị trí, giảm lệch đuôi bằng log-transform.
+   3. Huấn luyện mô hình hồi quy tuyến tính (Ridge) + chọn siêu tham số bằng K-Fold CV
+   4. Báo cáo metric (RMSE/MAE/R²) và trực quan hoá kết quả
 
 ---
 
@@ -93,9 +94,9 @@ Dự án tuân theo yêu cầu  **NumPy-only** cho tiền xử lý và xây dự
 
 * **Cross-Validation:** K-Fold (tuỳ chọn **stratified theo bin** của (y) cho hồi quy)
 
-**Implement bằng NumPy**
+* **Implement bằng NumPy**
 
-* Toàn bộ thao tác vector hoá bằng NumPy: chuẩn hoá, one-hot, KMeans mini, closed-form Ridge, K-Fold
+* Toàn bộ thao tác vector hoá bằng NumPy: chuẩn hoá, one-hot, Ridge (L2 regularization), K-Fold
 
 ---
 
@@ -176,7 +177,7 @@ Thứ tự chạy notebook:
 ```
 .
 ├── data/
-│   ├── raw/                      # đặt AB_NYC_2019.csv ở đây
+│   ├── raw/                      # file dữ liệu AB_NYC_2019.csv ở đây
 │   └── processed/
 │       └── ab_nyc_2019_processed_v2_geo.npz
 ├── notebooks/
@@ -223,8 +224,8 @@ Thứ tự chạy notebook:
 
 * **Đặc trưng vị trí:** tương tác `room_type × geo`
 * **Mã hoá phân loại:** **OOF target-encoding** cho `neighbourhood`/`host_id`
-* **Mô hình:** RandomForest/XGBoost/LightGBM để bắt phi tuyến (đối chiếu với Ridge)
-* **Text features:** n-gram từ `name` (bag-of-words thưa), sentiment/keyword
+* **Mô hình:** RandomForest/XGBoost/LightGBM để nắm bắt tính chất phi tuyến (đối chiếu với Ridge hiện tại)
+* **Text features:** n-gram từ `name` (bag-of-words, ...), sentiment/keyword
 * **Đánh giá:** thêm **spatial/block CV** (group theo `neighbourhood` hoặc lưới lat-lon)
 * **Chuẩn hoá quy trình:** script CLI tái lập end-to-end
 
@@ -233,6 +234,7 @@ Thứ tự chạy notebook:
 ## Contributors
 
 * **Tác giả:** *Nguyễn Ngọc Khoa*
+* **MSSV**: *23122036*
 * **Contact:** *[23122036@student.hcmus.edu.vn](mailto:23122036@student.hcmus.edu.vn)* 
 
 ---
